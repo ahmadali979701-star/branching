@@ -1,0 +1,2 @@
+A background notification was triggered.
+Book 'FastAPI Background Tasks' was added successfully.

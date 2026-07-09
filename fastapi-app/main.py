@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 
 import models
 import schemas
 from database import SessionLocal, engine, Base
 from auth import hash_password, verify_password
+from tasks import write_notification
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -24,13 +25,25 @@ def get_db():
     finally:
         db.close()
 
+def send_notification(message: str):
+    with open("notifications.txt", "a") as file:
+        file.write(message + "\n")
 
 # Root endpoint
 @app.get("/")
 def root():
     return {"message": "Library API Running"}
 
+@app.post("/notify")
+def notify(background_tasks: BackgroundTasks):
+    background_tasks.add_task(
+        send_notification,
+        "A background notification was triggered."
+    )
 
+    return {
+        "message": "Notification is being processed in the background."
+    }
 # ==========================
 # Authentication Endpoints
 # ==========================
@@ -61,7 +74,11 @@ def login(user: schemas.UserLogin):
 # ==========================
 
 @app.post("/books")
-def create_book(book: schemas.BookCreate, db: Session = Depends(get_db)):
+def create_book(
+    book: schemas.BookCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     new_book = models.Book(
         title=book.title,
         author=book.author
@@ -71,7 +88,17 @@ def create_book(book: schemas.BookCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_book)
 
-    return new_book
+    # Run background task
+    background_tasks.add_task(write_notification, book.title)
+
+    return {
+        "message": "Book added successfully. Background task started.",
+        "book": {
+            "id": new_book.id,
+            "title": new_book.title,
+            "author": new_book.author
+        }
+    }
 
 
 @app.get("/books")
